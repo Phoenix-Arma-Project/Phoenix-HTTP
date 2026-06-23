@@ -1,0 +1,7 @@
+{
+    "maxConcurrentRequests": 8,
+    "requestTimeoutSeconds": 30,
+    "chunkSize": 8192,
+    "debug": false,
+    "environments": {}
+}

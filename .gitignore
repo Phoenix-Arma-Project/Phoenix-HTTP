@@ -1,0 +1,18 @@
+# HEMTT build output
+.hemttout/
+dist/
+
+# HEMTT / BI signing keys — never commit these
+*.hemttprivatekey
+*.biprivatekey
+
+# Visual Studio / IDE
+.vs/
+.vscode/
+*.user
+*.suo
+*.sln.docstates
+
+# OS noise
+Thumbs.db
+.DS_Store

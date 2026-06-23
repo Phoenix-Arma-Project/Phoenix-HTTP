@@ -1,0 +1,4 @@
+<Solution>
+  <Project Path="PhoenixHTTP/PhoenixHTTP.csproj" />
+  <Project Path="PhoenixHTTP.Test/PhoenixHTTP.Test.csproj" />
+</Solution>

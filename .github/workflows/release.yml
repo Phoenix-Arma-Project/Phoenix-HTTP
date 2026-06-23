@@ -1,0 +1,115 @@
+name: Build and Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+jobs:
+  # The addon is built on Linux with HEMTT installed straight from its GitHub release. The
+  # arma-actions/hemtt action did not put hemtt on PATH (command-not-found on both runners), so we
+  # install the pinned binary ourselves. This addon has no models to binarize, so it needs no Arma 3
+  # Tools — `hemtt build` only rapifies the config and packs the PBO, which works fine on Linux.
+  addon:
+    name: Build addon (HEMTT)
+    runs-on: ubuntu-latest
+    env:
+      HEMTT_VERSION: v1.19.1
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup HEMTT
+        run: |
+          curl -sSL "https://github.com/BrettMayson/HEMTT/releases/download/${HEMTT_VERSION}/linux-x64.zip" -o hemtt.zip
+          unzip -o hemtt.zip -d "$HOME/.hemtt"
+          chmod +x "$HOME/.hemtt/hemtt"
+          echo "$HOME/.hemtt" >> "$GITHUB_PATH"
+
+      - name: Build addon with HEMTT
+        run: hemtt build
+
+      - name: Upload addon artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: addon
+          path: .hemttout/build/addons/*.pbo
+          if-no-files-found: error
+
+  # The extension is Native AOT for win-x64, so it must be built on Windows where the MSVC linker is
+  # available. Tests gate the build: a red test fails the job before anything is published.
+  extension:
+    name: Build extension (Native AOT)
+    runs-on: windows-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Test extension
+        run: dotnet test extension/PhoenixHTTP.Test/PhoenixHTTP.Test.csproj -c Release
+
+      - name: Build extension (Native AOT)
+        run: dotnet publish extension/PhoenixHTTP/PhoenixHTTP.csproj -c Release
+
+      - name: Upload extension artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: extension
+          path: extension/PhoenixHTTP/bin/Release/net10.0/win-x64/publish/PhoenixHttp_x64.dll
+          if-no-files-found: error
+
+  # Pull both build outputs together, assemble the @PhoenixHTTP mod folder, and publish the release.
+  release:
+    name: Assemble and release
+    needs: [addon, extension]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Download build artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: Assemble mod structure
+        run: |
+          DIST="dist/@PhoenixHTTP"
+          mkdir -p "$DIST/addons"
+          cp artifacts/addon/*.pbo "$DIST/addons/"
+          cp artifacts/extension/PhoenixHttp_x64.dll "$DIST/"
+          cp config.example.json "$DIST/config.json"
+
+      - name: Archive build
+        run: cd dist && zip -r ../PhoenixHTTP.zip @PhoenixHTTP
+
+      # Only meaningful for tag releases (it diffs against the previous tag). The main-branch
+      # pre-release uses a static body, so this is skipped there to avoid a "no tags" failure.
+      - name: Generate Release Notes
+        id: changelog
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: mikepenz/release-changelog-builder-action@v4
+        with:
+          failOnError: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v1
+        if: startsWith(github.ref, 'refs/tags/')
+        with:
+          files: PhoenixHTTP.zip
+          body: ${{ steps.changelog.outputs.changelog }}
+
+
